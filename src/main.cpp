@@ -13,7 +13,7 @@
 //     T_step_NNNNNN.bin   raw nx*ny double field snapshots
 //     metrics.csv         step, t [us], x_laser [um], peak T [K], W [um]
 
-#include <hedgehog/hedgehog.h>
+#include <hedgehog.h>
 
 #include <algorithm>
 #include <chrono>

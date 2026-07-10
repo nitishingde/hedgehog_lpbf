@@ -13,7 +13,7 @@
 // the halo rows (they're rebuilt by the driver before the next step).
 #pragma once
 
-#include <hedgehog/hedgehog.h>
+#include <hedgehog.h>
 #include <atomic>
 #include <chrono>
 #include <cmath>
