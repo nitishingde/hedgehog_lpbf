@@ -26,23 +26,15 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # --- Hedgehog (vendored, header-only) ---------------------------------------
-# Default to the in-tree copy so the bundle is fully self-contained.  A user
-# may still override with -DHEDGEHOG_INCLUDE_DIR=/path or an installed package.
-set(HEDGEHOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/hedgehog"
-    CACHE PATH "Path to the Hedgehog header tree (contains hedgehog/hedgehog.h)")
-find_package(Hedgehog QUIET)
-if(NOT Hedgehog_FOUND)
-    if(NOT EXISTS "${HEDGEHOG_INCLUDE_DIR}/hedgehog/hedgehog.h")
-        message(FATAL_ERROR
-            "Hedgehog headers not found at HEDGEHOG_INCLUDE_DIR="
-            "${HEDGEHOG_INCLUDE_DIR}. Point -DHEDGEHOG_INCLUDE_DIR at the tree "
-            "that contains hedgehog/hedgehog.h (the vendored copy lives in "
-            "third_party/hedgehog).")
-    endif()
-    add_library(Hedgehog::Hedgehog INTERFACE IMPORTED)
-    set_target_properties(Hedgehog::Hedgehog PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${HEDGEHOG_INCLUDE_DIR}")
-endif()
+include(FetchContent)
+FetchContent_Declare(
+    hedgehog
+    GIT_REPOSITORY https://github.com/usnistgov/hedgehog.git
+    GIT_TAG        master
+    GIT_SHALLOW    TRUE
+    OVERRIDE_FIND_PACKAGE
+)
+FetchContent_MakeAvailable(hedgehog)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -56,7 +48,7 @@ set(STDCXXFS_IF_NEEDED
 # --- CPU executable (the primary single-track solver) -----------------------
 add_executable(hedgehog_lpbf src/main.cpp)
 target_include_directories(hedgehog_lpbf PRIVATE include)
-target_link_libraries(hedgehog_lpbf PRIVATE Hedgehog::Hedgehog Threads::Threads
+target_link_libraries(hedgehog_lpbf PRIVATE hedgehog::hedgehog Threads::Threads
     ${STDCXXFS_IF_NEEDED})
 target_compile_options(hedgehog_lpbf PRIVATE -Wall -Wextra -Wpedantic -O3)
 
@@ -128,7 +120,7 @@ if(HEDGEHOG_LPBF_CUDA)
         HH_USE_CUDA HH_ENABLE_CHECK_CUDA)
     target_compile_options(hedgehog_lpbf_hhcuda PRIVATE -Wall -Wextra -O3)
     target_link_libraries(hedgehog_lpbf_hhcuda PRIVATE
-        Hedgehog::Hedgehog Threads::Threads CUDA::cudart lpbf_kernels
+        hedgehog::hedgehog Threads::Threads CUDA::cudart lpbf_kernels
         ${STDCXXFS_IF_NEEDED})
 
     message(STATUS "CUDA port ON  (arch=${CMAKE_CUDA_ARCHITECTURES})")
