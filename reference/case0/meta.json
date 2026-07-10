@@ -1,0 +1,33 @@
+{
+  "case":     "0",
+  "P_W":      285,
+  "V_mps":    0.96,
+  "r0_m":     3.35e-05,
+  "nx":       240,
+  "ny":       120,
+  "Lx_m":     0.0016,
+  "Ly_m":     0.0006,
+  "Tm_K":     1609,
+  "dt_s":     1.05083e-06,
+  "n_steps":  1427,
+  "ntiles":   8,
+  "threads":  4,
+  "peak_T_K": 7882.55,
+  "peak_W_um":100.84,
+  "wall_ms":  198,
+  "phases_ms": {
+    "build":    18.3861,
+    "push":     7.76543,
+    "wait":     105.948,
+    "stitch":   15.343,
+    "advance":  0.034124,
+    "metrics":  37.7673,
+    "snapshot": 4.52541
+  },
+  "task_ms": {
+    "compute_total_cpu":  338.883,
+    "alloc_total_cpu":    12.7659,
+    "stencil_total_cpu":  270.468,
+    "n_calls":             11416
+  }
+}
