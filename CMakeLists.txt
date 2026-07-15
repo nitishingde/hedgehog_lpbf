@@ -36,6 +36,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(hedgehog)
 
+FetchContent_Declare(
+    Kokkos
+    GIT_REPOSITORY https://github.com/kokkos/kokkos.git
+    GIT_TAG        5.1.1
+    GIT_SHALLOW    TRUE
+    OVERRIDE_FIND_PACKAGE
+)
+FetchContent_MakeAvailable(Kokkos)
+include(${kokkos_BINARY_DIR}/KokkosConfigCommon.cmake) #FIXME: https://github.com/kokkos/kokkos/issues/7359#event-14339616469
+
+
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
@@ -56,6 +67,10 @@ target_compile_options(hedgehog_lpbf PRIVATE -Wall -Wextra -Wpedantic -O3)
 # OFF by default: the CPU target above builds identically whether or not a CUDA
 # toolkit is present.  Turning this ON adds the hedgehog_lpbf_gpu target only.
 option(HEDGEHOG_LPBF_CUDA "Build the single-GPU CUDA port (needs nvcc)" OFF)
+
+add_executable(kokkos_lpbf src/kokkos_lbpf.cpp)
+target_link_libraries(kokkos_lpbf PUBLIC Kokkos::kokkos)
+target_include_directories(kokkos_lpbf PRIVATE include)
 
 if(HEDGEHOG_LPBF_CUDA)
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
