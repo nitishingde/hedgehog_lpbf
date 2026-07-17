@@ -68,7 +68,7 @@ target_compile_options(hedgehog_lpbf PRIVATE -Wall -Wextra -Wpedantic -O3)
 # toolkit is present.  Turning this ON adds the hedgehog_lpbf_gpu target only.
 option(HEDGEHOG_LPBF_CUDA "Build the single-GPU CUDA port (needs nvcc)" OFF)
 
-add_executable(kokkos_lpbf src/kokkos_lbpf.cpp)
+add_executable(kokkos_lpbf src/kokkos/lbpf.cpp)
 target_link_libraries(kokkos_lpbf PUBLIC Kokkos::kokkos)
 target_include_directories(kokkos_lpbf PRIVATE include)
 
