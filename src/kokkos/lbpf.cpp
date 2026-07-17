@@ -1,5 +1,5 @@
 #include "cpu_kernels.h"
-#include <Kokkos_Core.hpp>
+#include "kokkos_kernels.h"
 
 int main(int argc, char *argv[]) {
     const auto kokkosSG = Kokkos::ScopeGuard();
@@ -52,10 +52,18 @@ int main(int argc, char *argv[]) {
     if (cli.do_bench) {
         std::cout << "\n[--bench] " << n_steps << " steps each path...\n";
         RunResult cpu = run_cpu(mat, pr, dom, dt, n_steps, phys, cli.kmult);
-        auto sps = [&](double ms){ return ms>0 ? n_steps*1000.0/ms : 0.0; };
+        const auto result = run_cpu(mat, pr, dom, dt, n_steps, phys, cli.kmult);
+        auto sps = [&](const double ms){ return ms>0 ? n_steps*1000.0/ms : 0.0; };
         std::cout << "  CPU  wall " << cpu.wall_ms << " ms   " << sps(cpu.wall_ms)
-                  << " steps/s   peak_T=" << cpu.peak_T << "\n";
-        return 0;
+                  << " steps/s   peak_T=" << cpu.peak_T << "    peak_W=" << result.peak_W << "\n";
+    }
+
+    if (cli.do_bench) {
+        std::cout << "\n[--bench] " << n_steps << " steps each path...\n";
+        const auto result = runKokkos(mat, pr, dom, dt, n_steps, phys, cli.kmult);
+        auto sps = [&](const double ms){ return ms>0 ? n_steps*1000.0/ms : 0.0; };
+        std::cout << "  Kokkos  wall " << result.wall_ms << " ms   " << sps(result.wall_ms)
+                  << " steps/s   peak_T=" << result.peak_T << "    peak_W=" << result.peak_W << "\n";
     }
 
     return 0;
