@@ -143,12 +143,12 @@ private:
 
 // Host measure() — identical to src/main.cpp:164-211 (used by CPU path).
 template<KokkosView Field = Kokkos::View<double**>, KokkosExecutionSpace ExecutionSpace = Kokkos::Serial>
-static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm, const ExecutionSpace &executionSpace = ExecutionSpace()) {
+static StepMetrics measure(const ExecutionSpace &executionSpace, const Field &tempField, const Domain& dom, double Tm) {
     ThermalReduction results;
 
     const auto NX = tempField.extent(0);
     const auto NY = tempField.extent(1);
-    Kokkos::parallel_reduce("ThermalAnalysis", Kokkos::MDRangePolicy({0, 0}, {NX, NY}),
+    Kokkos::parallel_reduce("ThermalAnalysis", Kokkos::MDRangePolicy(executionSpace, {0, 0}, {NX, NY}),
         KOKKOS_LAMBDA(const int x, const int y, ThermalReduction& local) {
             const auto temperature = tempField(x, y);
 
@@ -163,6 +163,7 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
         },
         ThermalReducer(results)
     );
+    executionSpace.fence();
 
     return StepMetrics {
         .peak_T = results.Tmax,
@@ -270,7 +271,11 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
                 break;
         }
         fdm_boundary(executionSpace, outT);
-        executionSpace.fence();
+
+        const auto stepMetric = measure(executionSpace, inpT, dom, mat.Tm);
+
+        peak_T = std::max(peak_T, stepMetric.peak_T);
+        peak_W = std::max(peak_W, stepMetric.W_um);
         std::swap(currentT, nextT);
 
         x_laser += pr.V * dt;
@@ -279,9 +284,6 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
             wrapped = true;
         }
 
-        const auto stepMetric = measure(inpT, dom, mat.Tm);
-        peak_T = std::max(peak_T, stepMetric.peak_T);
-        peak_W = std::max(peak_W, stepMetric.W_um);
         if(!wrapped and x_laser <= 0.85*dom.Lx and 0.45*dom.Lx <= x_laser) {
             steady_W_sub = std::max(steady_W_sub, stepMetric.W_sub_um);
         }
