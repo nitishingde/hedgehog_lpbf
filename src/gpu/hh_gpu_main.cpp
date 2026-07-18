@@ -31,7 +31,7 @@
 //   --case --physics --tend --snap-every --threads (CPU sink threads)
 //   --P --V --r0 --eta --dsub --hconv --kmult --out --device --bench
 // ===========================================================================
-#include <hedgehog/hedgehog.h>
+#include <hedgehog.h>
 #include <cuda_runtime.h>
 
 #include <chrono>

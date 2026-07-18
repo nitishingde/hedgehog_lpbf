@@ -21,7 +21,7 @@
 // ---------------------------------------------------------------------------
 #pragma once
 
-#include <hedgehog/hedgehog.h>   // needs HH_USE_CUDA defined -> AbstractCUDATask
+#include <hedgehog.h>   // needs HH_USE_CUDA defined -> AbstractCUDATask
 #include <cuda_runtime.h>
 
 #include <atomic>
