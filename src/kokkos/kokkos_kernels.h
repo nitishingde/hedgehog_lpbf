@@ -194,6 +194,8 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
     bool wrapped         = false;
 
     const auto executionSpace = createExecutionSpace<ExecutionSpace>(0);
+    Kokkos::deep_copy(executionSpace, currentT, pr.Tamb);
+    Kokkos::deep_copy(executionSpace, nextT, pr.Tamb);
     Kokkos::parallel_for("expYTable", Kokkos::RangePolicy(executionSpace, 0, NY-2), KOKKOS_LAMBDA(const int j) {
         const auto yPos = static_cast<double>(j) * stepConst.dy;
         expY(j+1) = Kokkos::exp(-2.0 * square(yPos - y_laser) * stepConst.inv_r0_sq);
