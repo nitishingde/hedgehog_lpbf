@@ -226,8 +226,8 @@ static StepMetrics measure(const ExecutionSpace &executionSpace, const Field &te
                     const auto T   = inpT(i,   j);
                     const auto Txm = inpT(i-1, j);
                     const auto Txp = inpT(i+1, j);
-                    const auto Tym = inpT(i, j-1);
-                    const auto Typ = inpT(i, j+1);
+                    const auto Tym = inpT(i,   j-1);
+                    const auto Typ = inpT(i,   j+1);
                     const auto kCe = effectiveThermalConductivity(T, stepConst.kmult);
                     const auto kxm = 0.5 * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
                     const auto kxp = 0.5 * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
@@ -253,9 +253,13 @@ static StepMetrics measure(const ExecutionSpace &executionSpace, const Field &te
             default:
             case Physics::Baseline:
                 Kokkos::parallel_for("FDM.1", Kokkos::MDRangePolicy(executionSpace, {1, 1}, {NX-1, NY-1}), KOKKOS_LAMBDA(const int32_t i, const int32_t j) {
-                    const auto T     = inpT(i, j);
-                    const auto lap_x = (inpT(i+1, j) - 2.0*T + inpT(i-1, j)) * stepConst.inv_dx2;
-                    const auto lap_y = (inpT(i, j+1) - 2.0*T + inpT(i, j-1)) * stepConst.inv_dy2;
+                    const auto T   = inpT(i,   j);
+                    const auto Txm = inpT(i-1, j);
+                    const auto Txp = inpT(i+1, j);
+                    const auto Tym = inpT(i,   j-1);
+                    const auto Typ = inpT(i,   j+1);
+                    const auto lap_x = (Txp - 2.0*T + Txm) * stepConst.inv_dx2;
+                    const auto lap_y = (Typ - 2.0*T + Tym) * stepConst.inv_dy2;
                     const auto S     = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j) / (stepConst.rho_cp * stepConst.h);
                     auto       q_rad = 0.0;
                     if(stepConst.radiation) {
