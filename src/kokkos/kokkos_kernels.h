@@ -22,14 +22,27 @@ consteval double T_LIQ()    { return 1609.0;         } // K
 consteval double LF()       { return 210.0e3;        } // J/kg
 
 template<int32_t N = 9>
+requires (N == 9)
 KOKKOS_INLINE_FUNCTION double interp(const double T, const Kokkos::Array<double, N> &xs, const Kokkos::Array<double, N> &ys) {
     if(T <= xs[0])     return ys[0];
     if(T >= xs[N - 1]) return ys[N - 1];
 
-    int i = 1;
-    while (T > xs[i]) ++i;
-    const double f = (T - xs[i - 1]) / (xs[i] - xs[i - 1]);
-    return ys[i - 1] + f * (ys[i] - ys[i - 1]);
+    int32_t idx = 1;
+    idx += (T > xs[1]);
+    idx += (T > xs[2]);
+    idx += (T > xs[3]);
+    idx += (T > xs[4]);
+    idx += (T > xs[5]);
+    idx += (T > xs[6]);
+    idx += (T > xs[7]);
+
+    const auto x0 = xs[idx - 1];
+    const auto x1 = xs[idx];
+    const auto y0 = ys[idx - 1];
+    const auto y1 = ys[idx];
+
+    const auto f = (T - x0) / (x1 - x0);
+    return y0 + f * (y1 - y0);
 }
 
 KOKKOS_INLINE_FUNCTION double thermalConductivity(const double T) {
@@ -46,12 +59,10 @@ KOKKOS_INLINE_FUNCTION double specificHeatCapacity(const double T) {
 
 // params.hpp:93-100  Marangoni conductivity enhancement (kmult<=1 -> no-op).
 KOKKOS_INLINE_FUNCTION double thermalConductivityEnhancement(const double T, const double kmult) {
-    if (kmult <= 1.0) return 1.0;
-    double s;
-    if      (T <= T_SOL()) s = 0.0;
-    else if (T >= T_LIQ()) s = 1.0;
-    else                   s = (T - T_SOL()) / (T_LIQ() - T_SOL());
-    return 1.0 + (kmult - 1.0) * s;
+    const auto m = Kokkos::max(kmult - 1.0, 0.0);
+    auto s = (T - T_SOL()) / (T_LIQ() - T_SOL());
+    s =  Kokkos::max(0.0, Kokkos::min(s, 1.0));
+    return 1.0 + m * s;
 }
 
 KOKKOS_INLINE_FUNCTION double effectiveThermalConductivity(const double T, const double kmult) {
