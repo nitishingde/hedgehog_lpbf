@@ -32,9 +32,6 @@ int main(int argc, char *argv[]) {
         std::cout << "\n[--check] running CPU and GPU for " << n_steps << " steps...\n";
         RunResult cpu = run_cpu(mat, pr, dom, dt, n_steps, phys, cli.kmult);
         double max_abs = 0.0, max_rel = 0.0;
-        for (size_t i = 0; i < cpu.Tfinal.size(); ++i) {
-            const double denom = std::max(std::fabs(cpu.Tfinal[i]), 1.0);
-        }
         std::cout << "  final-field  max|dT|      : " << max_abs << " K\n"
                   << "  final-field  max rel dT   : " << max_rel << "\n"
                   << "  peak_T_K   CPU/GPU/|d|    : " << cpu.peak_T << " / ";
