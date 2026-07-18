@@ -15,9 +15,10 @@ template<typename T>
 [[nodiscard]] KOKKOS_INLINE_FUNCTION constexpr auto quad(const T val) {
     return val*val*val*val;
 }
+
 consteval double sigma_sb() { return 5.670374419e-8; }
-consteval double T_SOL()    { return 1533.0;         }  // K
-consteval double T_LIQ()    { return 1609.0;         }  // K
+consteval double T_SOL()    { return 1533.0;         } // K
+consteval double T_LIQ()    { return 1609.0;         } // K
 consteval double LF()       { return 210.0e3;        } // J/kg
 
 template<int32_t N = 9>
