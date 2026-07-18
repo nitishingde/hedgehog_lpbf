@@ -1,5 +1,5 @@
-#include "cpu_kernels.h"
 #include "kokkos_kernels.h"
+#include "cpu_kernels.h"
 
 int main(int argc, char *argv[]) {
     const auto kokkosSG = Kokkos::ScopeGuard();

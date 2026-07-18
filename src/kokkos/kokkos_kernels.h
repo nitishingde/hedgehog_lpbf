@@ -1,6 +1,9 @@
 #ifndef HEDGEHOG_LPBF_KOKKOS_KERNELS_H
 #define HEDGEHOG_LPBF_KOKKOS_KERNELS_H
 
+#include "utility.h"
+#include "lpbf_step_const.hpp"
+
 #include <Kokkos_Core.hpp>
 
 template<typename T>
@@ -11,6 +14,53 @@ template<typename T>
 template<typename T>
 [[nodiscard]] KOKKOS_INLINE_FUNCTION constexpr auto quad(const T val) {
     return val*val*val*val;
+}
+consteval double sigma_sb() { return 5.670374419e-8; }
+consteval double T_SOL()    { return 1533.0;         }  // K
+consteval double T_LIQ()    { return 1609.0;         }  // K
+consteval double LF()       { return 210.0e3;        } // J/kg
+
+template<int32_t N = 9>
+KOKKOS_INLINE_FUNCTION double interp(const double T, const Kokkos::Array<double, N> &xs, const Kokkos::Array<double, N> &ys) {
+    if(T <= xs[0])     return ys[0];
+    if(T >= xs[N - 1]) return ys[N - 1];
+
+    int i = 1;
+    while (T > xs[i]) ++i;
+    const double f = (T - xs[i - 1]) / (xs[i] - xs[i - 1]);
+    return ys[i - 1] + f * (ys[i] - ys[i - 1]);
+}
+
+KOKKOS_INLINE_FUNCTION double thermalConductivity(const double T) {
+    constexpr auto TEMPERATURE          = Kokkos::Array<double, 9>{298,  473,  673,  873, 1073, 1273, 1473, 1533, 1609};
+    constexpr auto THERMAL_CONDUCTIVITY = Kokkos::Array<double, 9>{8.9, 12.9, 15.8, 18.7, 21.9, 25.6, 28.6, 29.3, 29.6};
+    return interp<9>(T, TEMPERATURE, THERMAL_CONDUCTIVITY);
+}
+
+KOKKOS_INLINE_FUNCTION double specificHeatCapacity(const double T) {
+    constexpr auto TEMPERATURE            = Kokkos::Array<double, 9>{298,  473,  673,  873, 1073, 1273, 1473, 1533, 1609};
+    constexpr auto SPECIFIC_HEAT_CAPACITY = Kokkos::Array<double, 9>{435,  479,  515,  558,  580,  628,  670,  685,  720};
+    return interp<9>(T, TEMPERATURE, SPECIFIC_HEAT_CAPACITY);
+}
+
+// params.hpp:93-100  Marangoni conductivity enhancement (kmult<=1 -> no-op).
+KOKKOS_INLINE_FUNCTION double thermalConductivityEnhancement(const double T, const double kmult) {
+    if (kmult <= 1.0) return 1.0;
+    double s;
+    if      (T <= T_SOL()) s = 0.0;
+    else if (T >= T_LIQ()) s = 1.0;
+    else                   s = (T - T_SOL()) / (T_LIQ() - T_SOL());
+    return 1.0 + (kmult - 1.0) * s;
+}
+
+KOKKOS_INLINE_FUNCTION double effectiveThermalConductivity(const double T, const double kmult) {
+    return thermalConductivity(T) * thermalConductivityEnhancement(T, kmult);
+}
+
+// params.hpp:107-111  apparent-cp latent heat over the mushy interval.
+KOKKOS_INLINE_FUNCTION double effectiveSpecificHeatCapacity(const double T) {
+    const int32_t factor = (T_SOL() <= T and T <= T_LIQ());
+    return specificHeatCapacity(T) + factor*(LF()/(T_LIQ()-T_SOL()));
 }
 
 template<class ExecutionSpace = Kokkos::Serial, class ScalarField = Kokkos::View<double**>, class KokkosView = Kokkos::View<double*>>
@@ -163,11 +213,11 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
                     const auto Txp = inpT(i+1, j);
                     const auto Tym = inpT(i, j-1);
                     const auto Typ = inpT(i, j+1);
-                    const auto kCe = lpbf_dev::k_eff_host(T, stepConst.kmult);
-                    const auto kxm = 0.5 * (kCe + lpbf_dev::k_eff_host(Txm, stepConst.kmult));
-                    const auto kxp = 0.5 * (kCe + lpbf_dev::k_eff_host(Txp, stepConst.kmult));
-                    const auto kym = 0.5 * (kCe + lpbf_dev::k_eff_host(Tym, stepConst.kmult));
-                    const auto kyp = 0.5 * (kCe + lpbf_dev::k_eff_host(Typ, stepConst.kmult));
+                    const auto kCe = effectiveThermalConductivity(T, stepConst.kmult);
+                    const auto kxm = 0.5 * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
+                    const auto kxp = 0.5 * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
+                    const auto kym = 0.5 * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
+                    const auto kyp = 0.5 * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
                     const auto div_k_grad = 0.0
                         + (kxp*(Txp-T) - kxm*(T-Txm)) * stepConst.inv_dx2
                         + (kyp*(Typ-T) - kym*(T-Tym)) * stepConst.inv_dy2;
@@ -175,13 +225,13 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
 
                     auto q_rad = 0.0;
                     if(stepConst.radiation) {
-                        q_rad = stepConst.eps * lpbf_dev::sigma_sb() * (quad(T) - quad(stepConst.Tamb));
+                        q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
                     }
                     const auto q_top = stepConst.hConv * (T - stepConst.Tamb) + q_rad;
-                    const auto q_bot = (lpbf_dev::k_of_host(T) / stepConst.dSub) * (T - stepConst.Tsub);
+                    const auto q_bot = (thermalConductivity(T) / stepConst.dSub) * (T - stepConst.Tsub);
                     const auto rhs   = div_k_grad + (q_in - q_top - q_bot) * stepConst.inv_h;
 
-                    outT(i, j) = T + stepConst.dt * rhs / (stepConst.rho * lpbf_dev::cp_eff_host(T));
+                    outT(i, j) = T + stepConst.dt * rhs / (stepConst.rho * effectiveSpecificHeatCapacity(T));
                 });
                 break;
 
@@ -194,7 +244,7 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
                     const auto S     = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j) / (stepConst.rho_cp * stepConst.h);
                     auto       q_rad = 0.0;
                     if(stepConst.radiation) {
-                        q_rad = stepConst.eps * lpbf_dev::sigma_sb() * (quad(T) - quad(stepConst.Tamb));
+                        q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
                     }
                     const auto q_top = stepConst.hConv * (T - stepConst.Tamb) + q_rad;
                     const auto q_bot = (stepConst.K / stepConst.dSub) * (T - stepConst.Tsub);
