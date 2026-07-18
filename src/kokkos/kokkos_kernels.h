@@ -173,8 +173,8 @@ static StepMetrics measure(const Field &tempField, const Domain& dom, double Tm,
 }
 
 [[nodiscard]] static RunResult runKokkos(const lpbf::Material &mat, lpbf::Process pr, lpbf::Domain dom, double dt, const int32_t n_steps, lpbf::Physics phys, const double kmult) {
-    using MemorySpace = Kokkos::SharedSpace;
     using ExecutionSpace = Kokkos::DefaultExecutionSpace;
+    using MemorySpace    = ExecutionSpace::memory_space;
 
     const auto NX = dom.nx + 2;
     const auto NY = dom.ny + 2;
