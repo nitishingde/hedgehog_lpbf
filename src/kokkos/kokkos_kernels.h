@@ -117,7 +117,7 @@ struct ThermalReducer {
     KOKKOS_INLINE_FUNCTION explicit ThermalReducer(value_type& val) : value(val) {}
 
     KOKKOS_INLINE_FUNCTION static void join(value_type& dest, const value_type& src) {
-        if (src.Tmax > dest.Tmax) {
+        if(src.Tmax > dest.Tmax) {
             dest.Tmax = src.Tmax;
             dest.x_hot = src.x_hot;
         }
@@ -149,7 +149,7 @@ static StepMetrics measure(const ExecutionSpace &executionSpace, const Field &te
     const auto NX = tempField.extent(0);
     const auto NY = tempField.extent(1);
     Kokkos::parallel_reduce("ThermalAnalysis", Kokkos::MDRangePolicy(executionSpace, {0, 0}, {NX, NY}),
-        KOKKOS_LAMBDA(const int x, const int y, ThermalReduction& local) {
+        KOKKOS_LAMBDA(const int32_t x, const int32_t y, ThermalReduction& local) {
             const auto temperature = tempField(x, y);
 
             if(local.Tmax < temperature) {
