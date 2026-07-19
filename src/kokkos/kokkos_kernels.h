@@ -2,7 +2,6 @@
 #define HEDGEHOG_LPBF_KOKKOS_KERNELS_H
 
 #include "utility.h"
-#include "lpbf_step_const.hpp"
 
 #include <Kokkos_Core.hpp>
 
@@ -95,8 +94,9 @@ void fdm_boundary(const ExecutionSpace &executionSpace, const ScalarField &field
 }
 
 // 1. Custom struct to hold all 2D reduction variables
+template<std::floating_point Float>
 struct ThermalReduction {
-    double  Tmax;
+    Float   Tmax;
     int32_t x_hot;
     int32_t y_min;
     int32_t y_max;
@@ -109,9 +109,10 @@ struct ThermalReduction {
     }
 };
 
+template<std::floating_point Float>
 struct ThermalReducer {
     using reducer = ThermalReducer;
-    using value_type = ThermalReduction;
+    using value_type = ThermalReduction<Float>;
     using result_view_type = Kokkos::View<value_type, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 
     KOKKOS_INLINE_FUNCTION explicit ThermalReducer(value_type& val) : value(val) {}
@@ -142,14 +143,14 @@ private:
 };
 
 // Host measure() — identical to src/main.cpp:164-211 (used by CPU path).
-template<KokkosView Field = Kokkos::View<double**>, KokkosExecutionSpace ExecutionSpace = Kokkos::Serial>
-static StepMetrics measure(const ExecutionSpace &executionSpace, const Field &tempField, const Domain& dom, double Tm) {
-    ThermalReduction results;
+template<std::floating_point Float, KokkosView Field = Kokkos::View<Float**>, KokkosExecutionSpace ExecutionSpace = Kokkos::Serial>
+static StepMetrics<Float> measure(const ExecutionSpace &executionSpace, const Field &tempField, const Domain<Float> &dom, Float Tm) {
+    auto results = ThermalReduction<Float>{};
 
     const auto NX = tempField.extent(0);
     const auto NY = tempField.extent(1);
     Kokkos::parallel_reduce("ThermalAnalysis", Kokkos::MDRangePolicy(executionSpace, {0, 0}, {NX, NY}),
-        KOKKOS_LAMBDA(const int32_t x, const int32_t y, ThermalReduction& local) {
+        KOKKOS_LAMBDA(const int32_t x, const int32_t y, ThermalReduction<Float> &local) {
             const auto temperature = tempField(x, y);
 
             if(local.Tmax < temperature) {
@@ -165,9 +166,9 @@ static StepMetrics measure(const ExecutionSpace &executionSpace, const Field &te
     );
     executionSpace.fence();
 
-    return StepMetrics {
+    return StepMetrics<Float> {
         .peak_T = results.Tmax,
-        .W_um = (results.y_max < 0 or results.y_min == 1e9) ? 0.0 : (results.y_max - results.y_min + 1) * dom.dy() * 1e6,
+        .W_um = (results.y_max < 0 or results.y_min == 1e9) ? Float{0} : Float((results.y_max - results.y_min + 1) * dom.dy() * 1e6),
         .W_sub_um = 0,//TODO
         .x_hot = results.x_hot
     };

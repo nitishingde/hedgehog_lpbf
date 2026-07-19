@@ -1,12 +1,17 @@
+#include <rocprim/types.hpp>
+
+#include "../common.h"
 #include "kokkos_kernels.h"
 
+
 int main(const int argc, char *argv[]) {
+    using Float = float;
     const auto kokkosSG = Kokkos::ScopeGuard();
 
-    const auto     cli = parse_cli(argc, argv);
-    auto           mat = Material();
-    auto           pr  = Process();
-    constexpr auto dom = Domain();
+    const auto     cli = parse_cli<Float>(argc, argv);
+    auto           mat = Material<Float>();
+    auto           pr  = Process<Float>();
+    constexpr auto dom = Domain<Float>();
 
     apply_case(cli.case_id, pr);
     if (cli.P_ovr     > 0)  pr.P     = cli.P_ovr;
@@ -17,7 +22,7 @@ int main(const int argc, char *argv[]) {
     if (cli.hconv_ovr >= 0) pr.hConv = cli.hconv_ovr;
 
     const Physics phys = (cli.physics == "ext") ? Physics::Extended : Physics::Baseline;
-    const double dt = (phys == Physics::Extended) ? dt_cfl_ext(mat, dom, cli.kmult)
+    const Float dt = (phys == Physics::Extended) ? dt_cfl_ext(mat, dom, cli.kmult)
                                                   : dt_cfl(mat, dom);
     const int n_steps = static_cast<int>(cli.t_end / dt);
 
@@ -35,26 +40,26 @@ int main(const int argc, char *argv[]) {
     constexpr auto NX = dom.nx + 2;
     constexpr auto NY = dom.ny + 2;
 
-    auto currentT = Kokkos::View<double**, MemorySpace>("TemperatureField", NX, NY);
-    auto nextT    = Kokkos::View<double**, MemorySpace>("TemperatureField", NX, NY);
+    auto currentT = Kokkos::View<Float**, MemorySpace>("TemperatureField", NX, NY);
+    auto nextT    = Kokkos::View<Float**, MemorySpace>("TemperatureField", NX, NY);
 
-    const auto expX = Kokkos::View<double*, MemorySpace>("ExpX", NX);
-    const auto expY = Kokkos::View<double*, MemorySpace>("ExpY", NY);
+    const auto expX = Kokkos::View<Float*, MemorySpace>("ExpX", NX);
+    const auto expY = Kokkos::View<Float*, MemorySpace>("ExpY", NY);
 
-    auto stepConst  = make_const(mat, pr, dom, dt);
+    auto stepConst  = makeConst(mat, pr, dom, dt);
     stepConst.kmult = cli.kmult;
 
     constexpr auto x_start = 0.20*dom.Lx;
     auto           x_laser = x_start;
     constexpr auto y_laser = 0.50*dom.Ly;
-    auto           peak_T  = pr.Tamb, peak_W = 0.0, steady_W_sub = 0.0;
+    auto           peak_T  = pr.Tamb, peak_W = Float{0}, steady_W_sub = Float{0};
     bool           wrapped = false;
 
     const auto executionSpace = createExecutionSpace<ExecutionSpace>(0);
     Kokkos::deep_copy(executionSpace, currentT, pr.Tamb);
     Kokkos::deep_copy(executionSpace, nextT, pr.Tamb);
     Kokkos::parallel_for("expYTable", Kokkos::RangePolicy(executionSpace, 0, NY-2), KOKKOS_LAMBDA(const int j) {
-        const auto yPos = static_cast<double>(j) * stepConst.dy;
+        const auto yPos = static_cast<Float>(j) * stepConst.dy;
         expY(j+1) = Kokkos::exp(-2.0 * square(yPos - y_laser) * stepConst.inv_r0_sq);
     });
     executionSpace.fence();
@@ -65,11 +70,11 @@ int main(const int argc, char *argv[]) {
         stepConst.y_l = y_laser;
 
         Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(executionSpace, 0, NX-2), KOKKOS_LAMBDA(const int i) {
-            const auto xPos = static_cast<double>(i) * stepConst.dx;
+            const auto xPos = static_cast<Float>(i) * stepConst.dx;
             expX(i+1) = Kokkos::exp(-2.0 * square(xPos - x_laser) * stepConst.inv_r0_sq);
         });
 
-        const auto inpT = Kokkos::View<const double**, MemorySpace, Kokkos::MemoryTraits<Kokkos::RandomAccess>>(currentT);
+        const auto inpT = Kokkos::View<const Float**, MemorySpace, Kokkos::MemoryTraits<Kokkos::RandomAccess>>(currentT);
         const auto outT = nextT;
 
         switch(phys) {
@@ -128,7 +133,7 @@ int main(const int argc, char *argv[]) {
         }
         fdm_boundary(executionSpace, outT);
 
-        const auto stepMetric = measure(executionSpace, inpT, dom, mat.Tm);
+        const auto stepMetric = measure(executionSpace, outT, dom, mat.Tm);
 
         peak_T = std::max(peak_T, stepMetric.peak_T);
         peak_W = std::max(peak_W, stepMetric.W_um);
