@@ -1,5 +1,6 @@
 #include "../common.h"
 #include "kokkos_kernels.h"
+#include "tasks.h"
 
 int main(const int argc, char *argv[]) {
     using Float          = float;
@@ -61,6 +62,58 @@ int main(const int argc, char *argv[]) {
         expY(j+1) = Kokkos::exp(-2.0 * square(yPos - y_laser) * stepConst.inv_r0_sq);
     });
     executionSpace.fence();
+
+    if(cli.hedgehog) {
+        using ScalarFieldView = Kokkos::View<Float**, MemorySpace>;
+        
+        constexpr auto taskThreads = 3;
+        
+        const auto pool        = AutoReleaseMemoryPool<ScalarFieldView>::create();
+        pool->fill(taskThreads, "field", NX, NY);
+        const auto fdmTask     = std::make_shared<lpbf::FdmTask<Float, ExecutionSpace>>(pool);
+        const auto reducerTask = std::make_shared<lpbf::ReducerTask<ExecutionSpace, ScalarFieldView>>(mat.Tm, taskThreads);
+        const auto fmdSM       = std::make_shared<lpbf::FdmStateTask<Float>>(n_steps);
+        
+        using InputData = lpbf::InputData<Float, MemorySpace>;
+        auto graph = hh::Graph<1, InputData, StepMetrics<Float>>("LPBF");
+        graph.input<InputData>(fdmTask);
+        graph.edge<InputData>(fdmTask, fmdSM);
+        graph.edge<InputData>(fmdSM, fdmTask);
+        graph.edge<ScalarFieldView>(fdmTask, reducerTask);
+        graph.output<StepMetrics<Float>>(reducerTask);
+        graph.executeGraph();
+        
+        auto start = std::chrono::steady_clock::now();
+        graph.pushData(std::make_shared<InputData>(
+            expX,
+            expY,
+            currentT,
+            nextT,
+            dt,
+            dom,
+            pr,
+            stepConst,
+            x_laser,
+            y_laser,
+            x_laser,
+            y_laser,
+            phys
+        ));
+        graph.finishPushingData();
+        Float peakT = -1;
+        Float peakW = -1;
+        while(auto result = graph.getBlockingResult()) {
+            auto stepMetric = std::get<std::shared_ptr<StepMetrics<Float>>>(*result);
+            peakT = std::max(peakT, stepMetric->peak_T);
+            peakW = std::max(peakW, stepMetric->W_um);
+        }
+        graph.waitForTermination();
+        std::printf("[Peak Temp %f][Peak Width %f][Time %fms]\n", peakT, peakW, toMilliSeconds(std::chrono::steady_clock::now() - start));
+        graph.createDotFile("lbpf.dot", hh::ColorScheme::EXECUTION, hh::StructureOptions::NONE);
+        
+        return 0;
+    }
+
 
     const auto wall0 = std::chrono::steady_clock::now();
     for(int s = 0; s < n_steps; ++s) {

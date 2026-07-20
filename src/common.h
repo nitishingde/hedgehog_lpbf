@@ -92,6 +92,7 @@ struct CLI {
     int32_t device      = 0;
     bool   do_check    = false;
     bool   do_bench    = false;
+    bool   hedgehog    = false;
     Float check_rtol  = 1e-6;
     Float check_atol  = 1e-3;
 };
@@ -121,6 +122,7 @@ static auto parse_cli(const int argc, char **argv) {
         else if (starts("--check-atol=")) cli.check_atol = std::atof(a.c_str() + 13);
         else if (a == "--check")          cli.do_check   = true;
         else if (a == "--bench")          cli.do_bench   = true;
+        else if (a == "--hedgehog")       cli.hedgehog   = true;
         else if (a == "--help" || a == "-h") {
             std::cout <<
                 "Usage: hedgehog_lpbf_gpu [options]   (CUDA 2D z-averaged solver)\n"
