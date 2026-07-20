@@ -1,11 +1,11 @@
-#include <rocprim/types.hpp>
-
 #include "../common.h"
 #include "kokkos_kernels.h"
 
-
 int main(const int argc, char *argv[]) {
-    using Float = float;
+    using Float          = float;
+    using ExecutionSpace = Kokkos::DefaultExecutionSpace;
+    using MemorySpace    = ExecutionSpace::memory_space;
+
     const auto kokkosSG = Kokkos::ScopeGuard();
 
     const auto     cli = parse_cli<Float>(argc, argv);
@@ -34,8 +34,6 @@ int main(const int argc, char *argv[]) {
               << "  grid      : " << dom.nx << " x " << dom.ny << "\n"
               << "  dt        : " << dt*1e6 << " us   n_steps=" << n_steps << "\n";
 
-    using ExecutionSpace = Kokkos::DefaultExecutionSpace;
-    using MemorySpace    = ExecutionSpace::memory_space;
 
     constexpr auto NX = dom.nx + 2;
     constexpr auto NY = dom.ny + 2;
