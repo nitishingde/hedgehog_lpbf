@@ -20,9 +20,9 @@ consteval double T_SOL()    { return 1533.0;         } // K
 consteval double T_LIQ()    { return 1609.0;         } // K
 consteval double LF()       { return 210.0e3;        } // J/kg
 
-template<int32_t N = 9>
+template<std::floating_point Float, int32_t N = 9>
 requires (N == 9)
-KOKKOS_INLINE_FUNCTION double interp(const double T, const Kokkos::Array<double, N> &xs, const Kokkos::Array<double, N> &ys) {
+KOKKOS_INLINE_FUNCTION Float interp(const Float T, const Kokkos::Array<Float, N> &xs, const Kokkos::Array<Float, N> &ys) {
     if(T <= xs[0])     return ys[0];
     if(T >= xs[N - 1]) return ys[N - 1];
 
@@ -44,32 +44,37 @@ KOKKOS_INLINE_FUNCTION double interp(const double T, const Kokkos::Array<double,
     return y0 + f * (y1 - y0);
 }
 
-KOKKOS_INLINE_FUNCTION double thermalConductivity(const double T) {
-    constexpr auto TEMPERATURE          = Kokkos::Array<double, 9>{298,  473,  673,  873, 1073, 1273, 1473, 1533, 1609};
-    constexpr auto THERMAL_CONDUCTIVITY = Kokkos::Array<double, 9>{8.9, 12.9, 15.8, 18.7, 21.9, 25.6, 28.6, 29.3, 29.6};
-    return interp<9>(T, TEMPERATURE, THERMAL_CONDUCTIVITY);
+template<std::floating_point Float>
+KOKKOS_INLINE_FUNCTION Float thermalConductivity(const Float T) {
+    constexpr auto TEMPERATURE          = Kokkos::Array<Float, 9>{298,  473,  673,  873, 1073, 1273, 1473, 1533, 1609};
+    constexpr auto THERMAL_CONDUCTIVITY = Kokkos::Array<Float, 9>{8.9, 12.9, 15.8, 18.7, 21.9, 25.6, 28.6, 29.3, 29.6};
+    return interp<Float, 9>(T, TEMPERATURE, THERMAL_CONDUCTIVITY);
 }
 
-KOKKOS_INLINE_FUNCTION double specificHeatCapacity(const double T) {
-    constexpr auto TEMPERATURE            = Kokkos::Array<double, 9>{298,  473,  673,  873, 1073, 1273, 1473, 1533, 1609};
-    constexpr auto SPECIFIC_HEAT_CAPACITY = Kokkos::Array<double, 9>{435,  479,  515,  558,  580,  628,  670,  685,  720};
-    return interp<9>(T, TEMPERATURE, SPECIFIC_HEAT_CAPACITY);
+template<std::floating_point Float>
+KOKKOS_INLINE_FUNCTION Float specificHeatCapacity(const Float T) {
+    constexpr auto TEMPERATURE            = Kokkos::Array<Float, 9>{298,  473,  673,  873, 1073, 1273, 1473, 1533, 1609};
+    constexpr auto SPECIFIC_HEAT_CAPACITY = Kokkos::Array<Float, 9>{435,  479,  515,  558,  580,  628,  670,  685,  720};
+    return interp<Float, 9>(T, TEMPERATURE, SPECIFIC_HEAT_CAPACITY);
 }
 
 // params.hpp:93-100  Marangoni conductivity enhancement (kmult<=1 -> no-op).
-KOKKOS_INLINE_FUNCTION double thermalConductivityEnhancement(const double T, const double kmult) {
-    const auto m = Kokkos::max(kmult - 1.0, 0.0);
-    auto s = (T - T_SOL()) / (T_LIQ() - T_SOL());
-    s =  Kokkos::max(0.0, Kokkos::min(s, 1.0));
-    return 1.0 + m * s;
+template<std::floating_point Float>
+KOKKOS_INLINE_FUNCTION Float thermalConductivityEnhancement(const Float T, const Float kmult) {
+    const auto m = Kokkos::max(kmult - Float{1}, Float{0});
+    Float s = (T - T_SOL()) / (T_LIQ() - T_SOL());
+    s = Kokkos::max(Float{0}, Kokkos::min(s, Float{1}));
+    return Float{1} + m * s;
 }
 
-KOKKOS_INLINE_FUNCTION double effectiveThermalConductivity(const double T, const double kmult) {
+template<std::floating_point Float>
+KOKKOS_INLINE_FUNCTION Float effectiveThermalConductivity(const Float T, const Float kmult) {
     return thermalConductivity(T) * thermalConductivityEnhancement(T, kmult);
 }
 
 // params.hpp:107-111  apparent-cp latent heat over the mushy interval.
-KOKKOS_INLINE_FUNCTION double effectiveSpecificHeatCapacity(const double T) {
+template<std::floating_point Float>
+KOKKOS_INLINE_FUNCTION Float effectiveSpecificHeatCapacity(const Float T) {
     const int32_t factor = (T_SOL() <= T and T <= T_LIQ());
     return specificHeatCapacity(T) + factor*(LF()/(T_LIQ()-T_SOL()));
 }

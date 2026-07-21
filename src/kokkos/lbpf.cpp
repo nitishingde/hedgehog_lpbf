@@ -62,7 +62,7 @@ int main(const int argc, char *argv[]) {
     Kokkos::deep_copy(executionSpace, nextT, pr.Tamb);
     Kokkos::parallel_for("expYTable", Kokkos::RangePolicy(executionSpace, 0, NY-2), KOKKOS_LAMBDA(const int j) {
         const auto yPos = static_cast<Float>(j) * stepConst.dy;
-        expY(j+1) = Kokkos::exp(-2.0 * square(yPos - y_laser) * stepConst.inv_r0_sq);
+        expY(j+1) = Kokkos::exp(Float{-2} * square(yPos - y_laser) * stepConst.inv_r0_sq);
     });
     executionSpace.fence();
 
@@ -112,7 +112,7 @@ int main(const int argc, char *argv[]) {
         std::printf("[Time %.3fms][Steps/s %.3f][Peak Temp %.3fK][Peak Width %.3fum]\n", time, sps(time), peakT, peakW);
         const auto dotFile = "lbpf_"s + (phys == Physics::Baseline? "base": "ext") + ".dot";
         graph.createDotFile(dotFile, hh::ColorScheme::EXECUTION, hh::StructureOptions::NONE);
-        
+
         return 0;
     }
 
@@ -121,9 +121,9 @@ int main(const int argc, char *argv[]) {
         stepConst.x_l = x_laser;
         stepConst.y_l = y_laser;
 
-        Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(executionSpace, 0, NX-2), KOKKOS_LAMBDA(const int i) {
+        Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(executionSpace, 0, NX-2), KOKKOS_LAMBDA(const int32_t i) {
             const auto xPos = static_cast<Float>(i) * stepConst.dx;
-            expX(i+1) = Kokkos::exp(-2.0 * square(xPos - x_laser) * stepConst.inv_r0_sq);
+            expX(i+1) = Kokkos::exp(Float{-2} * square(xPos - x_laser) * stepConst.inv_r0_sq);
         });
 
         const auto inpT = Kokkos::View<const Float**, MemorySpace, Kokkos::MemoryTraits<Kokkos::RandomAccess>>(currentT);
@@ -138,16 +138,16 @@ int main(const int argc, char *argv[]) {
                     const auto Tym = inpT(i,   j-1);
                     const auto Typ = inpT(i,   j+1);
                     const auto kCe = effectiveThermalConductivity(T, stepConst.kmult);
-                    const auto kxm = 0.5 * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
-                    const auto kxp = 0.5 * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
-                    const auto kym = 0.5 * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
-                    const auto kyp = 0.5 * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
-                    const auto div_k_grad = 0.0
+                    const auto kxm = Float{0.5} * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
+                    const auto kxp = Float{0.5} * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
+                    const auto kym = Float{0.5} * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
+                    const auto kyp = Float{0.5} * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
+                    const auto div_k_grad = Float{0}
                         + (kxp*(Txp-T) - kxm*(T-Txm)) * stepConst.inv_dx2
                         + (kyp*(Typ-T) - kym*(T-Tym)) * stepConst.inv_dy2;
                     const auto q_in = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j);
 
-                    auto q_rad = 0.0;
+                    auto q_rad = Float{0};
                     if(stepConst.radiation) {
                         q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
                     }
@@ -167,10 +167,10 @@ int main(const int argc, char *argv[]) {
                     const auto Txp = inpT(i+1, j);
                     const auto Tym = inpT(i,   j-1);
                     const auto Typ = inpT(i,   j+1);
-                    const auto lap_x = (Txp - 2.0*T + Txm) * stepConst.inv_dx2;
-                    const auto lap_y = (Typ - 2.0*T + Tym) * stepConst.inv_dy2;
+                    const auto lap_x = (Txp - Float{2}*T + Txm) * stepConst.inv_dx2;
+                    const auto lap_y = (Typ - Float{2}*T + Tym) * stepConst.inv_dy2;
                     const auto S     = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j) / (stepConst.rho_cp * stepConst.h);
-                    auto       q_rad = 0.0;
+                    auto       q_rad = Float{0};
                     if(stepConst.radiation) {
                         q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
                     }
@@ -204,8 +204,7 @@ int main(const int argc, char *argv[]) {
     const auto wall_ms = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wall0).count());
 
 
-    std::cout << "\n[--bench] " << n_steps << " steps each path...\n";
-    std::printf("[Time %.3fms][Steps/s %.3f][Peak Temp %.3f][Peak Width %.3f]\n", wall_ms, sps(wall_ms), peak_T, peak_W);
+    std::printf("[Time %.3fms][Steps/s %.3f][Peak Temp %.3f][Peak Width %.3f]\n", wall_ms, sps(wall_ms), static_cast<double>(peak_T), static_cast<double>(peak_W));
 
     return 0;
 }

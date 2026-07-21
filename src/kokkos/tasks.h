@@ -122,9 +122,9 @@ namespace lpbf {
                 const auto inpT = Kokkos::View<const Float**, MemorySpace, Kokkos::MemoryTraits<Kokkos::RandomAccess>>(data->currentField);
                 const auto outT = data->nextField;
 
-                Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(this->executionSpace(), 0, NX-2), KOKKOS_LAMBDA(const int i) {
+                Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(this->executionSpace(), 0, NX-2), KOKKOS_LAMBDA(const int32_t i) {
                     const auto xPos = static_cast<Float>(i) * stepConst.dx;
-                    expX(i+1) = Kokkos::exp(-2.0 * square(xPos - x_laser) * stepConst.inv_r0_sq);
+                    expX(i+1) = Kokkos::exp(Float{-2} * square(xPos - x_laser) * stepConst.inv_r0_sq);
                 });
 
                 if(data->mode == Physics::Baseline) {
@@ -134,10 +134,10 @@ namespace lpbf {
                         const auto Txp = inpT(i+1, j);
                         const auto Tym = inpT(i,   j-1);
                         const auto Typ = inpT(i,   j+1);
-                        const auto lap_x = (Txp - 2.0*T + Txm) * stepConst.inv_dx2;
-                        const auto lap_y = (Typ - 2.0*T + Tym) * stepConst.inv_dy2;
+                        const auto lap_x = (Txp - Float{2}*T + Txm) * stepConst.inv_dx2;
+                        const auto lap_y = (Typ - Float{2}*T + Tym) * stepConst.inv_dy2;
                         const auto S     = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j) / (stepConst.rho_cp * stepConst.h);
-                        auto       q_rad = 0.0;
+                        auto       q_rad = Float{0};
                         if(stepConst.radiation) {
                             q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
                         }
@@ -157,16 +157,16 @@ namespace lpbf {
                         const auto Tym = inpT(i,   j-1);
                         const auto Typ = inpT(i,   j+1);
                         const auto kCe = effectiveThermalConductivity(T, stepConst.kmult);
-                        const auto kxm = 0.5 * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
-                        const auto kxp = 0.5 * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
-                        const auto kym = 0.5 * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
-                        const auto kyp = 0.5 * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
-                        const auto div_k_grad = 0.0
+                        const auto kxm = Float{0.5} * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
+                        const auto kxp = Float{0.5} * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
+                        const auto kym = Float{0.5} * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
+                        const auto kyp = Float{0.5} * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
+                        const auto div_k_grad = Float{0}
                             + (kxp*(Txp-T) - kxm*(T-Txm)) * stepConst.inv_dx2
                             + (kyp*(Typ-T) - kym*(T-Tym)) * stepConst.inv_dy2;
                         const auto q_in = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j);
 
-                        auto q_rad = 0.0;
+                        auto q_rad = Float{0};
                         if(stepConst.radiation) {
                             q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
                         }
