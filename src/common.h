@@ -196,40 +196,47 @@ namespace in718 {
     inline constexpr double CP_PTS[N_PTS]  = {  435,  479,  515,  558,  580,
                                                 628,  670,  685,  720 };
 
-    inline double interp(double T, double const* xs, double const* ys, int n)
-        noexcept {
-        if (T <= xs[0])     return ys[0];
-        if (T >= xs[n - 1]) return ys[n - 1];
+    template<std::floating_point Float>
+    inline Float interp(Float T, Float const* xs, Float const* ys, int n) noexcept {
+        if (T <= xs[0])     return static_cast<Float>(ys[0]);
+        if (T >= xs[n - 1]) return static_cast<Float>(ys[n - 1]);
         int i = 1;
         while (T > xs[i]) ++i;
-        const double f = (T - xs[i - 1]) / (xs[i] - xs[i - 1]);
-        return ys[i - 1] + f * (ys[i] - ys[i - 1]);
+        const Float f = (T - xs[i - 1]) / (xs[i] - xs[i - 1]);
+        return static_cast<Float>(ys[i - 1] + f * (ys[i] - ys[i - 1]));
     }
 
-    inline double k_of (double T) noexcept { return interp(T, T_PTS, K_PTS,  N_PTS); }
-    inline double cp_of(double T) noexcept { return interp(T, T_PTS, CP_PTS, N_PTS); }
+    template<std::floating_point Float>
+    inline Float k_of (Float T) noexcept { return (Float)interp<double>((double)T, T_PTS, K_PTS,  N_PTS); }
+
+    template<std::floating_point Float>
+    inline Float cp_of(Float T) noexcept { return (Float)interp<double>((double)T, T_PTS, CP_PTS, N_PTS); }
 
     // Learned melt-pool conductivity enhancement (Marangoni-convection proxy).
     // The effective in-plane conductivity is the Mills value times a factor that
     // ramps from 1 (solid, below the solidus) to `kmult` (fully molten, above the
     // liquidus).  kmult is the single learned parameter; kmult = 1 recovers the
     // pure-conduction extended physics exactly.
-    inline double k_enh(double T, double kmult) noexcept {
+    template<std::floating_point Float>
+    inline Float k_enh(Float T, Float kmult) noexcept {
         if (kmult <= 1.0) return 1.0;
-        double s;
+        Float s;
         if      (T <= T_SOL) s = 0.0;
         else if (T >= T_LIQ) s = 1.0;
         else                 s = (T - T_SOL) / (T_LIQ - T_SOL);
         return 1.0 + (kmult - 1.0) * s;
     }
-    inline double k_eff(double T, double kmult) noexcept {
-        return k_of(T) * k_enh(T, kmult);
+
+    template<std::floating_point Float>
+    inline Float k_eff(Float T, Float kmult) noexcept {
+        return k_of<Float>(T) * k_enh<Float>(T, kmult);
     }
 
     // Apparent heat capacity: cp(T) plus the latent heat spread uniformly
     // over the mushy interval.
-    inline double cp_eff(double T) noexcept {
-        double c = cp_of(T);
+    template<std::floating_point Float>
+    inline Float cp_eff(Float T) noexcept {
+        Float c = cp_of<Float>(T);
         if (T >= T_SOL && T <= T_LIQ) c += LF / (T_LIQ - T_SOL);
         return c;
     }
@@ -237,10 +244,11 @@ namespace in718 {
     // Largest effective diffusivity, including the conductivity enhancement
     // (scanned on a fine grid since k_eff is no longer piecewise-linear).  cp_eff
     // >= cp, so using cp is conservative for the CFL bound.
-    inline double alpha_eff_max(double rho, double kmult) noexcept {
-        double m = 0.0;
-        for (double T = 298.0; T <= 2200.0; T += 5.0)
-            m = std::max(m, k_eff(T, kmult) / (rho * cp_of(T)));
+    template<std::floating_point Float>
+    inline Float alpha_eff_max(Float rho, Float kmult) noexcept {
+        Float m = 0.0;
+        for (Float T = 298.0; T <= 2200.0; T += 5.0)
+            m = std::max(m, k_eff<Float>(T, kmult) / (rho * cp_of<Float>(T)));
         return m;
     }
 }  // namespace in718
@@ -250,8 +258,8 @@ namespace in718 {
 // conductivity-enhancement factor kmult; kmult = 1 is the unenhanced default).
 template<std::floating_point Float>
 inline Float dt_cfl_ext(Material<Float> const& m, Domain<Float> const& d, Float kmult = 1.0) noexcept {
-    const double a = in718::alpha_eff_max(m.rho, kmult);
-    return 0.35 / (a * (1.0 / (d.dx() * d.dx()) + 1.0 / (d.dy() * d.dy())));
+    const Float a = in718::alpha_eff_max(m.rho, kmult);
+    return Float{0.35} / (a * (Float{1} / (d.dx() * d.dx()) + Float{1} / (d.dy() * d.dy())));
 }
 
 #endif //HEDGEHOG_LPBF_COMMON_H
