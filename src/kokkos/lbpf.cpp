@@ -2,6 +2,8 @@
 #include "kokkos_kernels.h"
 #include "tasks.h"
 
+using namespace std::string_literals;
+
 int main(const int argc, char *argv[]) {
     using Float          = float;
     using ExecutionSpace = Kokkos::DefaultExecutionSpace;
@@ -35,6 +37,7 @@ int main(const int argc, char *argv[]) {
               << "  grid      : " << dom.nx << " x " << dom.ny << "\n"
               << "  dt        : " << dt*1e6 << " us   n_steps=" << n_steps << "\n";
 
+    auto sps = [&](const double ms){ return ms>0 ? n_steps*1000.0/ms : 0.0; };
 
     constexpr auto NX = dom.nx + 2;
     constexpr auto NY = dom.ny + 2;
@@ -65,20 +68,16 @@ int main(const int argc, char *argv[]) {
 
     if(cli.hedgehog) {
         using ScalarFieldView = Kokkos::View<Float**, MemorySpace>;
-        
-        constexpr auto taskThreads = 3;
-        
+
         const auto pool        = AutoReleaseMemoryPool<ScalarFieldView>::create();
-        pool->fill(taskThreads, "field", NX, NY);
+        pool->fill(cli.n_threads, "field", NX, NY);
         const auto fdmTask     = std::make_shared<lpbf::FdmTask<Float, ExecutionSpace>>(pool);
-        const auto reducerTask = std::make_shared<lpbf::ReducerTask<ExecutionSpace, ScalarFieldView>>(mat.Tm, taskThreads);
+        const auto reducerTask = std::make_shared<lpbf::ReducerTask<ExecutionSpace, ScalarFieldView>>(mat.Tm, cli.n_threads);
         const auto fmdSM       = std::make_shared<lpbf::FdmStateTask<Float>>(n_steps);
         
         using InputData = lpbf::InputData<Float, MemorySpace>;
         auto graph = hh::Graph<1, InputData, StepMetrics<Float>>("LPBF");
         graph.input<InputData>(fdmTask);
-        graph.edge<InputData>(fdmTask, fmdSM);
-        graph.edge<InputData>(fmdSM, fdmTask);
         graph.edge<ScalarFieldView>(fdmTask, reducerTask);
         graph.output<StepMetrics<Float>>(reducerTask);
         graph.executeGraph();
@@ -97,7 +96,8 @@ int main(const int argc, char *argv[]) {
             y_laser,
             x_laser,
             y_laser,
-            phys
+            phys,
+            n_steps
         ));
         graph.finishPushingData();
         Float peakT = -1;
@@ -108,12 +108,13 @@ int main(const int argc, char *argv[]) {
             peakW = std::max(peakW, stepMetric->W_um);
         }
         graph.waitForTermination();
-        std::printf("[Peak Temp %f][Peak Width %f][Time %fms]\n", peakT, peakW, toMilliSeconds(std::chrono::steady_clock::now() - start));
-        graph.createDotFile("lbpf.dot", hh::ColorScheme::EXECUTION, hh::StructureOptions::NONE);
+        const auto time = toMilliSeconds(std::chrono::steady_clock::now() - start);
+        std::printf("[Time %.3fms][Steps/s %.3f][Peak Temp %.3fK][Peak Width %.3fum]\n", time, sps(time), peakT, peakW);
+        const auto dotFile = "lbpf_"s + (phys == Physics::Baseline? "base": "ext") + ".dot";
+        graph.createDotFile(dotFile, hh::ColorScheme::EXECUTION, hh::StructureOptions::NONE);
         
         return 0;
     }
-
 
     const auto wall0 = std::chrono::steady_clock::now();
     for(int s = 0; s < n_steps; ++s) {
@@ -204,9 +205,7 @@ int main(const int argc, char *argv[]) {
 
 
     std::cout << "\n[--bench] " << n_steps << " steps each path...\n";
-    auto sps = [&](const double ms){ return ms>0 ? n_steps*1000.0/ms : 0.0; };
-    std::cout << "  Kokkos  wall " << wall_ms << " ms   " << sps(wall_ms)
-              << " steps/s   peak_T=" << peak_T << "    peak_W=" << peak_W << "\n";
+    std::printf("[Time %.3fms][Steps/s %.3f][Peak Temp %.3f][Peak Width %.3f]\n", wall_ms, sps(wall_ms), peak_T, peak_W);
 
     return 0;
 }

@@ -99,6 +99,7 @@ namespace lpbf {
         Float                              laserStartX;
         Float                              laserStartY;
         Physics                            mode;
+        int32_t                            timeSteps;
     };
 
     template<std::floating_point Float, KokkosExecutionSpace ExecutionSpace, KokkosMemorySpace MemorySpace = ExecutionSpace::memory_space, KokkosView View = Kokkos::View<Float**, MemorySpace>>
@@ -112,94 +113,101 @@ namespace lpbf {
         void execute(std::shared_ptr<InputData<Float, MemorySpace>> data) override {
             const auto expX      = data->expX;
             const auto expY      = data->expY;
-            const auto inpT      = data->currentField;
-            const auto outT      = data->nextField;
             const auto stepConst = data->stepConst;
-            const auto x_laser   = data->laserX;
-            const auto NX        = inpT.extent(0);
-            const auto NY        = inpT.extent(1);
+            const auto NX        = data->currentField.extent(0);
+            const auto NY        = data->currentField.extent(1);
+            auto       x_laser   = data->laserX;
 
-            Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(this->executionSpace(), 0, NX-2), KOKKOS_LAMBDA(const int i) {
-                const auto xPos = static_cast<Float>(i) * stepConst.dx;
-                expX(i+1) = Kokkos::exp(-2.0 * square(xPos - x_laser) * stepConst.inv_r0_sq);
-            });
+            for(int32_t ts = 0; ts < data->timeSteps; ++ts) {
+                const auto inpT = Kokkos::View<const Float**, MemorySpace, Kokkos::MemoryTraits<Kokkos::RandomAccess>>(data->currentField);
+                const auto outT = data->nextField;
 
-            if(data->mode == Physics::Baseline) {
-                Kokkos::parallel_for("FDM.1", Kokkos::MDRangePolicy(this->executionSpace(), {1, 1}, {NX-1, NY-1}), KOKKOS_LAMBDA(const int32_t i, const int32_t j) {
-                    const auto T   = inpT(i,   j);
-                    const auto Txm = inpT(i-1, j);
-                    const auto Txp = inpT(i+1, j);
-                    const auto Tym = inpT(i,   j-1);
-                    const auto Typ = inpT(i,   j+1);
-                    const auto lap_x = (Txp - 2.0*T + Txm) * stepConst.inv_dx2;
-                    const auto lap_y = (Typ - 2.0*T + Tym) * stepConst.inv_dy2;
-                    const auto S     = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j) / (stepConst.rho_cp * stepConst.h);
-                    auto       q_rad = 0.0;
-                    if(stepConst.radiation) {
-                        q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
-                    }
-                    const auto q_top = stepConst.hConv * (T - stepConst.Tamb) + q_rad;
-                    const auto q_bot = (stepConst.K / stepConst.dSub) * (T - stepConst.Tsub);
-                    const auto loss  = (q_top + q_bot) * stepConst.inv_h / stepConst.rho_cp;
-                    const auto dTdt  = stepConst.alpha * (lap_x + lap_y) + S - loss;
-
-                    outT(i, j) = T + stepConst.dt * dTdt;
+                Kokkos::parallel_for("expXTable", Kokkos::RangePolicy(this->executionSpace(), 0, NX-2), KOKKOS_LAMBDA(const int i) {
+                    const auto xPos = static_cast<Float>(i) * stepConst.dx;
+                    expX(i+1) = Kokkos::exp(-2.0 * square(xPos - x_laser) * stepConst.inv_r0_sq);
                 });
-            }
-            else if(data->mode == Physics::Extended) {
-                Kokkos::parallel_for("FDM.2", Kokkos::MDRangePolicy(this->executionSpace(), {1, 1}, {NX-1, NY-1}), KOKKOS_LAMBDA(const int32_t i, const int32_t j) {
-                    const auto T   = inpT(i,   j);
-                    const auto Txm = inpT(i-1, j);
-                    const auto Txp = inpT(i+1, j);
-                    const auto Tym = inpT(i,   j-1);
-                    const auto Typ = inpT(i,   j+1);
-                    const auto kCe = effectiveThermalConductivity(T, stepConst.kmult);
-                    const auto kxm = 0.5 * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
-                    const auto kxp = 0.5 * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
-                    const auto kym = 0.5 * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
-                    const auto kyp = 0.5 * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
-                    const auto div_k_grad = 0.0
-                        + (kxp*(Txp-T) - kxm*(T-Txm)) * stepConst.inv_dx2
-                        + (kyp*(Typ-T) - kym*(T-Tym)) * stepConst.inv_dy2;
-                    const auto q_in = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j);
 
-                    auto q_rad = 0.0;
-                    if(stepConst.radiation) {
-                        q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
-                    }
-                    const auto q_top = stepConst.hConv * (T - stepConst.Tamb) + q_rad;
-                    const auto q_bot = (thermalConductivity(T) / stepConst.dSub) * (T - stepConst.Tsub);
-                    const auto rhs   = div_k_grad + (q_in - q_top - q_bot) * stepConst.inv_h;
+                if(data->mode == Physics::Baseline) {
+                    Kokkos::parallel_for("FDM.1", Kokkos::MDRangePolicy(this->executionSpace(), {1, 1}, {NX-1, NY-1}), KOKKOS_LAMBDA(const int32_t i, const int32_t j) {
+                        const auto T   = inpT(i,   j);
+                        const auto Txm = inpT(i-1, j);
+                        const auto Txp = inpT(i+1, j);
+                        const auto Tym = inpT(i,   j-1);
+                        const auto Typ = inpT(i,   j+1);
+                        const auto lap_x = (Txp - 2.0*T + Txm) * stepConst.inv_dx2;
+                        const auto lap_y = (Typ - 2.0*T + Tym) * stepConst.inv_dy2;
+                        const auto S     = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j) / (stepConst.rho_cp * stepConst.h);
+                        auto       q_rad = 0.0;
+                        if(stepConst.radiation) {
+                            q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
+                        }
+                        const auto q_top = stepConst.hConv * (T - stepConst.Tamb) + q_rad;
+                        const auto q_bot = (stepConst.K / stepConst.dSub) * (T - stepConst.Tsub);
+                        const auto loss  = (q_top + q_bot) * stepConst.inv_h / stepConst.rho_cp;
+                        const auto dTdt  = stepConst.alpha * (lap_x + lap_y) + S - loss;
 
-                    outT(i, j) = T + stepConst.dt * rhs / (stepConst.rho * effectiveSpecificHeatCapacity(T));
+                        outT(i, j) = T + stepConst.dt * dTdt;
+                    });
+                }
+                else if(data->mode == Physics::Extended) {
+                    Kokkos::parallel_for("FDM.2", Kokkos::MDRangePolicy(this->executionSpace(), {1, 1}, {NX-1, NY-1}), KOKKOS_LAMBDA(const int32_t i, const int32_t j) {
+                        const auto T   = inpT(i,   j);
+                        const auto Txm = inpT(i-1, j);
+                        const auto Txp = inpT(i+1, j);
+                        const auto Tym = inpT(i,   j-1);
+                        const auto Typ = inpT(i,   j+1);
+                        const auto kCe = effectiveThermalConductivity(T, stepConst.kmult);
+                        const auto kxm = 0.5 * (kCe + effectiveThermalConductivity(Txm, stepConst.kmult));
+                        const auto kxp = 0.5 * (kCe + effectiveThermalConductivity(Txp, stepConst.kmult));
+                        const auto kym = 0.5 * (kCe + effectiveThermalConductivity(Tym, stepConst.kmult));
+                        const auto kyp = 0.5 * (kCe + effectiveThermalConductivity(Typ, stepConst.kmult));
+                        const auto div_k_grad = 0.0
+                            + (kxp*(Txp-T) - kxm*(T-Txm)) * stepConst.inv_dx2
+                            + (kyp*(Typ-T) - kym*(T-Tym)) * stepConst.inv_dy2;
+                        const auto q_in = stepConst.q_scale * stepConst.peak_S * expX(i) * expY(j);
+
+                        auto q_rad = 0.0;
+                        if(stepConst.radiation) {
+                            q_rad = stepConst.eps * sigma_sb() * (quad(T) - quad(stepConst.Tamb));
+                        }
+                        const auto q_top = stepConst.hConv * (T - stepConst.Tamb) + q_rad;
+                        const auto q_bot = (thermalConductivity(T) / stepConst.dSub) * (T - stepConst.Tsub);
+                        const auto rhs   = div_k_grad + (q_in - q_top - q_bot) * stepConst.inv_h;
+
+                        outT(i, j) = T + stepConst.dt * rhs / (stepConst.rho * effectiveSpecificHeatCapacity(T));
+                    });
+                }
+                else {
+                    using namespace std::string_literals;
+                    // throw std::runtime_error("Physics mode ["s + std::to_string(data->mode) + "]  not supported!");
+                    throw std::runtime_error("Physics mode not supported!");
+                }
+
+                Kokkos::parallel_for("BND_VERTICAL", Kokkos::RangePolicy(this->executionSpace(), 0, NY), KOKKOS_LAMBDA(const int32_t j) {
+                    outT(   0, j) = outT(   1, j);
+                    outT(NX-1, j) = outT(NX-2, j);
                 });
+
+                Kokkos::parallel_for("BND_HORIZONTAL", Kokkos::RangePolicy(this->executionSpace(), 0, NX), KOKKOS_LAMBDA(const int32_t i) {
+                    const int32_t isLeft  = (i == 0);
+                    const int32_t isRight = (i == (NX - 1));
+                    const auto    ri      = isLeft*1 + isRight*(NX-2) + (1-isLeft)*(1-isRight)*i;
+
+                    outT(i, 0)    = outT(ri, 1);
+                    outT(i, NY-1) = outT(ri, NY-2);
+                });
+
+                const auto field = pool_->allocate(MemoryManagerAllocateMode::Wait);
+                Kokkos::deep_copy(this->executionSpace(), *field, outT);
+                this->fence();
+                this->addResult(field);
+
+                x_laser += data->process.V*data->dt;
+                if(0.90*data->domain.Lx < x_laser) {
+                    x_laser = data->laserStartX;
+                }
+                std::swap(data->currentField, data->nextField);
             }
-            else {
-                using namespace std::string_literals;
-                // throw std::runtime_error("Physics mode ["s + std::to_string(data->mode) + "]  not supported!");
-                throw std::runtime_error("Physics mode not supported!");
-            }
-
-            Kokkos::parallel_for("BND_VERTICAL", Kokkos::RangePolicy(this->executionSpace(), 0, NY), KOKKOS_LAMBDA(const int32_t j) {
-                outT(   0, j) = outT(   1, j);
-                outT(NX-1, j) = outT(NX-2, j);
-            });
-
-            Kokkos::parallel_for("BND_HORIZONTAL", Kokkos::RangePolicy(this->executionSpace(), 0, NX), KOKKOS_LAMBDA(const int32_t i) {
-                const int32_t isLeft  = (i == 0);
-                const int32_t isRight = (i == (NX - 1));
-                const auto    ri      = isLeft*1 + isRight*(NX-2) + (1-isLeft)*(1-isRight)*i;
-
-                outT(i, 0)    = outT(ri, 1);
-                outT(i, NY-1) = outT(ri, NY-2);
-            });
-
-            const auto field = pool_->allocate(MemoryManagerAllocateMode::Wait);
-            Kokkos::deep_copy(this->executionSpace(), *field, outT);
-
-            this->fence();
-            this->addResult(field);
-            this->addResult(data);
         }
 
         [[nodiscard]] std::string extraPrintingInformation() const override {
