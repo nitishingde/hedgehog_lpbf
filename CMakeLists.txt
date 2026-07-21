@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(hedgehog_lpbf CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT CMAKE_BUILD_TYPE)
@@ -91,7 +91,7 @@ if(HEDGEHOG_LPBF_CUDA)
     enable_language(CUDA)
     # The .cu files deliberately do NOT include Hedgehog, so nvcc never sees the
     # Hedgehog C++20 (concepts/requires).  C++17 is sufficient for the kernels.
-    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
     # CUDAToolkit gives us CUDA::cudart + the toolkit include dir.  The latter is
