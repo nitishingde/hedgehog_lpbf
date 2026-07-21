@@ -109,7 +109,7 @@ int main(const int argc, char *argv[]) {
         }
         graph.waitForTermination();
         const auto time = toMilliSeconds(std::chrono::steady_clock::now() - start);
-        std::printf("[Time %.3fms][Steps/s %.3f][Peak Temp %.3fK][Peak Width %.3fum]\n", time, sps(time), peakT, peakW);
+        std::printf("[Hedgehog][Time %.3fms][Steps/s %.3f][Peak Temp %.3fK][Peak Width %.3fum]\n", time, sps(time), peakT, peakW);
         const auto dotFile = "lbpf_"s + (phys == Physics::Baseline? "base": "ext") + ".dot";
         graph.createDotFile(dotFile, hh::ColorScheme::EXECUTION, hh::StructureOptions::NONE);
 
