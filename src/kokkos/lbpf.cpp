@@ -2,6 +2,8 @@
 #include "kokkos_kernels.h"
 #include "tasks.h"
 
+#include <stdfloat>
+
 using namespace std::string_literals;
 
 int main(const int argc, char *argv[]) {
